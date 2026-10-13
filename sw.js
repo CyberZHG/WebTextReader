@@ -1,4 +1,4 @@
-const CACHE = 'wtr-v11';
+const CACHE = 'wtr-v12';
 const ASSETS = [
   './',
   'index.html',
