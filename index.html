@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1b1e23">
+<title>离线文本朗读</title>
+<script>try{var t=JSON.parse(localStorage.getItem('wtr.theme'));if(t==='light'||t==='dark')document.documentElement.dataset.theme=t}catch(e){}</script>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<link rel="stylesheet" href="css/base.css">
+<link rel="stylesheet" href="css/pages.css">
+</head>
+<body>
+<header class="bar">
+  <h1><a href="https://github.com/CyberZHG/WebTextReader" target="_blank" rel="noopener" title="在 GitHub 上查看源代码">离线文本朗读</a></h1>
+  <div class="actions">
+    <button id="themeBtn" type="button" class="icon-btn"></button>
+    <button type="button" class="icon-btn" data-page="achievements" data-icon="trophy" title="成就" aria-label="成就"></button>
+    <button type="button" class="icon-btn" data-page="settings" data-icon="sliders" title="更多设置" aria-label="更多设置"></button>
+    <button id="aboutBtn" type="button" class="icon-btn" data-icon="shield" title="免责声明" aria-label="免责声明"></button>
+  </div>
+</header>
+<main>
+  <div id="warn" class="warn" hidden>当前浏览器不支持 Web Speech API 语音合成。</div>
+  <section class="panel">
+    <div class="grid">
+      <label><span>语言</span><select id="langSel"></select></label>
+      <label><span>语音</span><select id="voiceSel"></select></label>
+      <label><span>对话语音</span><select id="dialogSel" title="引号内的对话使用的语音"></select></label>
+      <label><span>语速 <output id="rateOut"></output></span><input id="rate" type="range" min="0.5" max="3" step="0.1"></label>
+      <label><span>音调 <output id="pitchOut"></output></span><input id="pitch" type="range" min="0" max="2" step="0.1"></label>
+      <label><span>章节间隔 <output id="gapOut"></output></span><input id="gap" type="range" min="0" max="30" step="1"></label>
+      <label><span>定时停止</span><select id="timerSel"></select></label>
+      <label><span>听完几章后停止</span><select id="chapterLimitSel"></select></label>
+    </div>
+    <div id="iosHint" class="hint" hidden>iPhone / iPad 上如果听不到声音，请关闭侧面的静音开关。</div>
+  </section>
+  <nav class="tabs">
+    <button type="button" data-mode="file">文件</button>
+    <button type="button" data-mode="text">文本</button>
+  </nav>
+  <section id="textPanel" class="panel" hidden>
+    <textarea id="textInput" rows="6" placeholder="在此粘贴要朗读的文本"></textarea>
+    <div class="row">
+      <button id="loadText" type="button" class="primary">载入并朗读</button>
+      <button id="clearText" type="button">清空</button>
+    </div>
+  </section>
+  <section id="filePanel" class="panel" hidden>
+    <div class="row">
+      <select id="fileSel" title="已保存的文件"></select>
+      <label class="btn">上传文件<input id="fileInput" type="file" accept=".txt,.text,.md,.markdown,.log,.csv,text/*" multiple hidden></label>
+      <button id="delFile" type="button">删除</button>
+    </div>
+    <div class="row">
+      <select id="tplSel" title="章节正则模板"></select>
+      <input id="regexInput" class="mono" placeholder="章节正则，留空则不分章" spellcheck="false" autocomplete="off">
+      <button id="applyRegex" type="button">应用</button>
+    </div>
+    <div class="hint">也可以把文本文件直接拖拽到页面任意位置上传</div>
+    <div id="regexMsg" class="msg"></div>
+  </section>
+  <details id="searchPanel" class="panel fold" data-fold="search">
+    <summary>搜索</summary>
+    <div class="body">
+      <div class="row">
+        <input id="searchInput" type="search" placeholder="搜索全文（快捷键 /）" autocomplete="off">
+        <button id="searchBtn" type="button">搜索</button>
+      </div>
+      <div id="searchMsg" class="msg"></div>
+      <ol id="searchResults" class="results"></ol>
+    </div>
+  </details>
+  <details class="panel fold" data-fold="bookmarks">
+    <summary>书签<span id="bmCount"></span></summary>
+    <div class="body">
+      <ol id="bookmarkList" class="results"></ol>
+      <div id="bookmarkEmpty" class="hint">还没有书签。点击底部书签按钮或按 B 为当前行添加书签。</div>
+    </div>
+  </details>
+  <section id="reader" class="reader"></section>
+</main>
+<button id="followBtn" type="button" class="follow-btn" hidden>回到当前行</button>
+<footer class="controls">
+  <div class="inner">
+    <select id="chapterSel" title="章节"></select>
+    <div class="buttons">
+      <button id="bookmarkBtn" type="button" class="tip" data-tip="添加书签（B）" aria-label="添加书签（B）" data-icon="bookmark"></button>
+      <button id="prevCh" type="button" class="tip" data-tip="上一章" aria-label="上一章" data-icon="prevCh"></button>
+      <button id="prevLine" type="button" class="tip" data-tip="上一行（←）" aria-label="上一行（←）" data-icon="prevLine"></button>
+      <button id="playBtn" type="button" class="primary tip" data-tip="播放（空格）" aria-label="播放（空格）" data-icon="play"></button>
+      <button id="nextLine" type="button" class="tip" data-tip="下一行（→）" aria-label="下一行（→）" data-icon="nextLine"></button>
+      <button id="nextCh" type="button" class="tip" data-tip="下一章" aria-label="下一章" data-icon="nextCh"></button>
+    </div>
+  </div>
+  <div id="status" class="status"></div>
+</footer>
+<div id="dropZone" class="drop-zone" hidden><div>松开以上传文本文件</div></div>
+
+<section id="achvPage" class="page" hidden>
+  <header class="bar">
+    <div class="actions">
+      <button type="button" class="icon-btn" data-close data-icon="back" title="返回" aria-label="返回"></button>
+      <h1>成就</h1>
+    </div>
+    <div class="actions">
+      <span id="achvCount" class="count"></span>
+      <button id="shareBtn" type="button" class="icon-btn" data-icon="share" title="生成分享卡片" aria-label="生成分享卡片"></button>
+    </div>
+  </header>
+  <div class="page-body">
+    <h2>统计</h2>
+    <div id="statGrid" class="stat-grid"></div>
+    <h2>收听日历</h2>
+    <div id="heatmap" class="panel"></div>
+    <div id="bookList"></div>
+    <div id="achvList"></div>
+  </div>
+</section>
+
+<section id="settingsPage" class="page" hidden>
+  <header class="bar">
+    <div class="actions">
+      <button type="button" class="icon-btn" data-close data-icon="back" title="返回" aria-label="返回"></button>
+      <h1>更多设置</h1>
+    </div>
+  </header>
+  <div class="page-body">
+    <details class="panel fold" data-fold="display">
+      <summary>显示</summary>
+      <div class="body">
+        <div class="grid">
+          <label><span>字号 <output id="fontSizeOut"></output></span><input id="fontSize" type="range" min="14" max="32" step="1"></label>
+          <label><span>行距 <output id="lineHeightOut"></output></span><input id="lineHeight" type="range" min="1.2" max="2.6" step="0.1"></label>
+          <label><span>页面宽度</span><select id="pageWidth"></select></label>
+        </div>
+        <label class="check"><input id="followChk" type="checkbox">朗读时自动滚动到当前行</label>
+        <div class="hint">手动滚动页面后会暂停跟随，点击“回到当前行”恢复。</div>
+      </div>
+    </details>
+    <details class="panel fold" data-fold="system">
+      <summary>播放</summary>
+      <div class="body">
+        <label class="check"><input id="wakeChk" type="checkbox">朗读时保持屏幕常亮</label>
+        <div id="wakeHint" class="hint">避免手机锁屏后朗读中断。</div>
+        <label class="check"><input id="mediaChk" type="checkbox">系统媒体控制</label>
+        <div id="mediaHint" class="hint">实验性功能。可用耳机按键、锁屏或通知栏控制播放，实现方式是同时播放一段静音音频。在 iOS 上可能导致没有声音，如遇到朗读异常请关闭。</div>
+      </div>
+    </details>
+    <details class="panel fold" data-fold="rules">
+      <summary>朗读规则</summary>
+      <div class="body">
+        <label><span>跳过的行：每行一个正则，匹配的行不朗读</span>
+          <textarea id="skipRules" class="mono" rows="4" spellcheck="false" placeholder="本章完&#10;^(求|投)(月票|推荐票)&#10;https?://"></textarea>
+        </label>
+        <label><span>读音替换：每行一条“原文=读法”，正则写作“/正则/=读法”</span>
+          <textarea id="replaceRules" class="mono" rows="4" spellcheck="false" placeholder="~=到&#10;AI=人工智能&#10;/(\d+)%/=百分之$1"></textarea>
+        </label>
+        <div class="row"><button id="applyRules" type="button" class="primary">保存规则</button></div>
+        <div id="rulesMsg" class="msg"></div>
+      </div>
+    </details>
+    <details class="panel fold" data-fold="backup">
+      <summary>数据备份</summary>
+      <div class="body">
+        <div class="hint">所有数据只保存在当前浏览器中。备份包含设置、阅读进度、书签、统计和成就，可在其他设备或浏览器中导入。</div>
+        <label class="check"><input id="backupFiles" type="checkbox" checked>包含上传的文件内容</label>
+        <div class="row">
+          <button id="exportBtn" type="button" class="primary">导出备份</button>
+          <label class="btn">导入备份<input id="importInput" type="file" accept=".wtrbak" hidden></label>
+        </div>
+        <div id="backupMsg" class="msg"></div>
+      </div>
+    </details>
+  </div>
+</section>
+
+<dialog id="shareDlg" class="dialog">
+  <img id="shareImg" alt="成就分享卡片">
+  <div class="row">
+    <button id="shareSend" type="button" class="primary">分享</button>
+    <button id="shareSave" type="button">保存图片</button>
+    <button id="shareClose" type="button">关闭</button>
+  </div>
+</dialog>
+
+<dialog id="aboutDlg" class="dialog about">
+  <h2>免责声明与隐私说明</h2>
+  <ul>
+    <li>本网页是托管在 GitHub Pages 上的纯静态页面，没有后端服务器，也不收集任何统计或分析数据。</li>
+    <li>你粘贴的文本、上传的文件、阅读进度、书签、设置、统计和成就都只保存在当前浏览器本地（localStorage 与 IndexedDB），不会上传到任何服务器。</li>
+    <li>朗读由浏览器自带的 Web Speech API 完成。名称带“在线”的语音可能由浏览器厂商的云端服务合成，此时朗读内容会发送给浏览器厂商，这不受本网页控制；如有顾虑，请选择本地语音。</li>
+    <li>清除浏览器的网站数据会删除以上所有内容，请通过“更多设置 → 数据备份”定期导出。导出的备份文件同样只保存在你自己的设备上。</li>
+    <li>本工具按原样提供，不对使用中产生的任何问题承担责任。请确保你有权朗读所使用的内容。</li>
+  </ul>
+  <p>源代码：<a href="https://github.com/CyberZHG/WebTextReader" target="_blank" rel="noopener">github.com/CyberZHG/WebTextReader</a></p>
+  <div class="row"><button id="aboutClose" type="button" class="primary" autofocus>知道了</button></div>
+</dialog>
+
+<div id="heatTip" class="heat-tip" hidden></div>
+
+<div id="toasts" class="toasts"></div>
+
+<script src="js/core.js"></script>
+<script src="js/icons.js"></script>
+<script src="js/voice.js"></script>
+<script src="js/rules.js"></script>
+<script src="js/reader.js"></script>
+<script src="js/system.js"></script>
+<script src="js/player.js"></script>
+<script src="js/library.js"></script>
+<script src="js/tools.js"></script>
+<script src="js/display.js"></script>
+<script src="js/backup.js"></script>
+<script src="js/achievements.js"></script>
+<script src="js/achv-page.js"></script>
+<script src="js/share.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>
